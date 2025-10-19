@@ -40,6 +40,7 @@ class HomeImportHandler(MBH):
 
     @staticmethod
     def _serialize_virtual_output(vo: VOModel) -> Dict[str, Any]:
+        print("Serializing VO:", vo.id, vo.name, vo.uri)
         return {
             "id": str(vo.id),
             "name": vo.name,
@@ -104,7 +105,6 @@ class HomeImportHandler(MBH):
                 "last_run_at": w.last_run_at.isoformat() if w.last_run_at else None,
                 "nodes": [self._serialize_node(node) for node in w.nodes],
             } for w in rows]
-
             payload = {
                 "items": items,
                 "count": len(items),

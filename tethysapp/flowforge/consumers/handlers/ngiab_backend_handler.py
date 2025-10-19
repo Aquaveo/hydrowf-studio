@@ -20,6 +20,8 @@ from hera.shared import global_config
 from ..backend_actions import BackendActions
 from .model_run_handler import ModelBackendHandler as MBH
 from ...model import Workflow as WFModel, Node as NodeModel, WorkflowTemplate as WTModel, VirtualOutput as VOModel
+from ..util import _slug, _kind_tag, _allowed_parent, _parent_preference_order, _topo_layers, _normalize_edges
+
 
 log = logging.getLogger(__name__)
 
@@ -40,100 +42,11 @@ _TEMPLATE_FILES = {
     "ngiab-calibration-run": "ngiab-calibration-run.yaml",
     "ngiab-run": "ngiab-run.yaml",
     "ngiab-teehr": "ngiab-teehr.yaml",
-    # Dummy variants (update filenames to wherever you ship them)
-    "dummy-preprocess": "dummy-preprocess.yaml",
-    "dummy-calibration-config": "dummy-calibration-config.yaml",
-    "dummy-calibration-run": "dummy-calibration-run.yaml",
-    "dummy-run": "dummy-run.yaml",
-    "dummy-teehr": "dummy-teehr.yaml",
 }
 
 _TERMINAL = {"Succeeded", "Failed", "Error", "Terminated"}
 
 
-# --- ADD/REPLACE: helpers near your other small helpers ----------------------
-
-def _slug(x: str) -> str:
-    import re
-    return re.sub(r"[^a-zA-Z0-9\-]+", "-", str(x)).strip("-").lower() or "n"
-
-def _kind_tag(kind_or_label: str) -> str:
-    k = (kind_or_label or "").lower()
-    # normalize a few variants we've seen in the UI
-    if "pre-process" in k or "preprocess" in k:
-        return "pre"
-    if "calibration-config" in k:
-        return "cal_cfg"
-    if "calibration-run" in k:
-        return "cal_run"
-    if "teehr" in k:
-        return "teehr"
-    if ("ngiab" in k) and ("run" in k):
-        return "run"
-    return "other"
-
-def _allowed_parent(parent_tag: str, child_tag: str) -> bool:
-    # Stage-to-stage rules:
-    # pre -> cal_cfg -> cal_run -> run -> teehr
-    if child_tag == "cal_cfg":
-        return parent_tag == "pre"
-    if child_tag == "cal_run":
-        return parent_tag == "cal_cfg"
-    if child_tag == "run":
-        # run can take from cal_run, or (fallbacks) cal_cfg, pre
-        return parent_tag in ("cal_run", "cal_cfg", "pre")
-    if child_tag == "teehr":
-        return parent_tag == "run"
-    # default: no constraints
-    return True
-
-def _parent_preference_order(tag: str) -> int:
-    # Smaller number == stronger preference when multiple valid parents exist
-    # Used only for the 'run' stage to choose cal_run over cal_cfg over pre
-    order = {"cal_run": 0, "cal_cfg": 1, "pre": 2, "run": 0, "other": 9}
-    return order.get(tag, 9)
-
-def _normalize_edges(edges_in) -> list[tuple[str, str]]:
-    """Accept either [{'source': 'a', 'target': 'b'}, ...] or [('a','b'), ...]."""
-    out: list[tuple[str, str]] = []
-    for e in edges_in or []:
-        if isinstance(e, dict):
-            s, t = e.get("source"), e.get("target")
-        elif isinstance(e, (list, tuple)) and len(e) >= 2:
-            s, t = e[0], e[1]
-        else:
-            continue
-        if s is not None and t is not None:
-            out.append((str(s), str(t)))
-    return out
-
-def _topo_layers(nodes: list[dict], edges: list) -> list[list[str]]:
-    """Topological layering; edges can be normalized tuples or dicts."""
-    # normalize edges first
-    e2 = _normalize_edges(edges)
-    ids = [str(n["id"]) for n in nodes]
-    indeg = {i: 0 for i in ids}
-    adj = {i: [] for i in ids}
-    for (s, t) in e2:
-        if s in adj and t in indeg:
-            adj[s].append(t)
-            indeg[t] += 1
-    layers, frontier = [], [i for i in ids if indeg[i] == 0]
-    seen = set()
-    while frontier:
-        layers.append(frontier[:])
-        seen.update(frontier)
-        nxt = []
-        for u in frontier:
-            for v in adj[u]:
-                indeg[v] -= 1
-                if indeg[v] == 0 and v not in seen:
-                    nxt.append(v)
-        frontier = nxt
-    # Any nodes not reached (e.g. cyclic or isolated) go into a last layer
-    if len(seen) != len(ids):
-        layers.append([i for i in ids if i not in seen])
-    return layers
 
 
 async def _watch_workflow_nodes(
@@ -220,16 +133,20 @@ async def _watch_workflow_nodes(
                                 if not pointers:
                                     user = _user_id(self)
                                     pointers = [{
-                                        "dataset_bucket": _bucket(),
-                                        "dataset_key": f"{user}/{wf_id}/{argo_wf_name}/{ui_node_id}",
-                                        "dataset_prefix": f"{user}/{wf_id}/{argo_wf_name}/{ui_node_id}/",
+                                        "dataset_bucket": _bucket(), 
+                                        "dataset_key": f"{user}/{wf_id}/",
+                                        "dataset_prefix": f"{user}/{wf_id}/",
+                                        # "dataset_key": f"{user}/{wf_id}/{argo_wf_name}/{ui_node_id}",
+                                        # "dataset_prefix": f"{user}/{wf_id}/{argo_wf_name}/{ui_node_id}/",
                                     }]
+                                
+                                print(f"Recording virtual outputs for node '{ui_node_id}': {pointers}")
 
                                 for ptr in pointers:
                                     bucket = ptr.get("dataset_bucket") or _bucket()
                                     key = _resolve_workflow_name_placeholder(ptr.get("dataset_key"), argo_wf_name).lstrip("/")
                                     prefix_hint = _resolve_workflow_name_placeholder(ptr.get("dataset_prefix"), argo_wf_name).lstrip("/")
-
+                                    print(f"  -> bucket='{bucket}' key='{key}' prefix_hint='{prefix_hint}'")
                                     if not key and not prefix_hint:
                                         continue
 
@@ -494,7 +411,7 @@ def _run_id() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 def _bucket() -> str:
-    return os.getenv("NGIAB_S3_BUCKET", "test-ngen")
+    return os.getenv("NGIAB_S3_BUCKET", "test-bucket")
 
 def _kind_to_template(kind: str, mode: str = "real") -> str:
     """Map UI node kind to a WorkflowTemplate name for the selected mode."""
@@ -509,16 +426,7 @@ def _kind_to_template(kind: str, mode: str = "real") -> str:
         "teehr":              "ngiab-teehr",
         "default":            "ngiab-run",
     }
-    # Dummy templates (adjust names to your cluster if different)
-    DUMMY = {
-        "pre-process":        "dummy-preprocess",
-        "preprocess":         "dummy-preprocess",
-        "calibration-config": "dummy-calibration-config",
-        "calibration-run":    "dummy-calibration-run",
-        "run ngiab":          "dummy-run",
-        "teehr":              "dummy-teehr",
-        "default":            "dummy-run",
-    }
+
     table = REAL if mode == "real" else DUMMY
     k = (kind or "").lower()
     for key, tpl in table.items():
@@ -529,7 +437,8 @@ def _kind_to_template(kind: str, mode: str = "real") -> str:
 def _job_root_prefix(user: str, wf_uuid: str) -> str:
     # user/<workflow-uuid>/<argo-job-name>
     # NOTE: {{workflow.name}} is resolved by Argo at runtime.
-    return f"{user}/{wf_uuid}/{{{{workflow.name}}}}"
+    return f"{user}/{wf_uuid}"
+    #return f"{user}/{wf_uuid}/{{{{workflow.name}}}}"
 
 
 def _resolve_workflow_name_placeholder(value: str | None, argo_wf_name: str) -> str:
@@ -580,7 +489,7 @@ def _params_for(
         }
 
     if "calibration-config" in k:
-        ibucket = str(cfg.get("input_bucket") or bucket)
+        ibucket = str(upstream_bucket or cfg.get("input_bucket") or bucket)
         ikey = upstream_key or str(cfg.get("input_key") or cfg.get("input_s3_key") or "")
         if not ikey and cfg.get("input_s3_url"):
             try:
@@ -607,7 +516,7 @@ def _params_for(
         }
 
     if "calibration-run" in k:
-        ibucket = str(cfg.get("input_bucket") or bucket)
+        ibucket = str(upstream_bucket or cfg.get("input_bucket") or bucket)
         ikey = upstream_key or str(cfg.get("input_key") or cfg.get("input_s3_key") or "")
         if not ikey and cfg.get("input_s3_url"):
             try:
@@ -627,7 +536,7 @@ def _params_for(
         }
 
     if "run" in k and "ngiab" in k:
-        ibucket = str(cfg.get("input_bucket") or bucket)
+        ibucket = str(upstream_bucket or cfg.get("input_bucket") or bucket)
         ikey = upstream_key or str(cfg.get("input_key") or cfg.get("input_s3_key") or "")
         if not ikey and cfg.get("input_s3_url"):
             try:
@@ -649,7 +558,7 @@ def _params_for(
         }
     if "teehr" in k:
         # derive input bucket/key (from upstream pointer or provided fields)
-        ibucket = str(cfg.get("input_bucket") or bucket)
+        ibucket = str(upstream_bucket or cfg.get("input_bucket") or bucket)
         ikey = upstream_key or str(cfg.get("input_s3_key") or cfg.get("input_key") or "")
         if (not ikey) and cfg.get("input_s3_url"):
             try:
@@ -660,7 +569,7 @@ def _params_for(
         ikey = ikey.lstrip("/")
 
         subdir_default = "outputs"
-        if upstream_key and not str(upstream_key).endswith("outputs.tgz"):
+        if upstream_key and not str(upstream_key).endswith("outputs"):
             subdir_default = f"{cfg.get('input_subdir') or 'ngiab'}/outputs"
 
         return {
@@ -939,17 +848,19 @@ class NgiabBackendHandler(MBH):
                 kind, cfg, user, wf_uuid, last_in_chain=last_flag,
                 upstream_key=upstream_key, upstream_bucket=upstream_bucket
             )
+            
             # If we know the producing bucket/key, set explicit inputs for artifact binding
             if incoming and incoming.get("dataset_bucket") and incoming.get("dataset_key"):
                 params.setdefault("input_bucket", incoming["dataset_bucket"])
                 params.setdefault("input_key", incoming["dataset_key"])
                 params.setdefault("input_s3_key", incoming["dataset_key"])
             # unique branch path for outputs
-            base = params.get("output_prefix")
-            if base:
-                params["output_prefix"] = f"{base.rstrip('/')}/{branch}"
-            if params.get("final_prefix"):
-                params["final_prefix"] = f"{params['final_prefix'].rstrip('/')}/{branch}"
+            #base = params.get("output_prefix")
+            # if base:
+            #     params["output_prefix"] = f"{base.rstrip('/')}/{branch}"
+            # if params.get("final_prefix"):
+            #     params["final_prefix"] = f"{params['final_prefix'].rstrip('/')}/{branch}"
+            # No per-task branch directories; write directly under user/<wf-id>
             return params
 
         def _dataset_pointer_from_params(kind: str, params: dict, inherit: dict | None = None) -> dict:
@@ -958,32 +869,31 @@ class NgiabBackendHandler(MBH):
             if ("preprocess" in lk) or ("pre-process" in lk):
                 inherit.update({
                     "dataset_bucket": params.get("output_bucket", ""),
-                    "dataset_key": f"{params.get('output_prefix','').rstrip('/')}/{params.get('output_name','ngiab')}.tgz",
+                    "dataset_key": f"{params.get('output_prefix','').rstrip('/')}/{params.get('output_name','ngiab')}",
                 })
                 return inherit
             if "calibration-config" in lk:
                 inherit.update({
                     "dataset_bucket": params.get("output_bucket", ""),
-                    "dataset_key": f"{params.get('output_prefix','').rstrip('/')}/calibration-prepared.tgz",
+                    "dataset_key": f"{params.get('output_prefix','').rstrip('/')}/calibration-prepared",
                 })
                 return inherit
             if "calibration-run" in lk:
                 inherit.update({
                     "dataset_bucket": params.get("output_bucket", ""),
-                    "dataset_key": f"{params.get('output_prefix','').rstrip('/')}/calibrated.tgz",
+                    "dataset_key": f"{params.get('output_prefix','').rstrip('/')}/calibrated",
                 })
                 return inherit
             if (("ngiab" in lk) and ("run" in lk)):
                 inherit.update({
                     "dataset_bucket": params.get("output_bucket", ""),
-                    "dataset_key": f"{params.get('output_prefix','').rstrip('/')}/{params.get('output_name','ngiab')}.tgz",
+                    "dataset_key": f"{params.get('output_prefix','').rstrip('/')}/{params.get('output_name','ngiab')}",
                 })
                 return inherit
             if "teehr" in lk:
-                # teehr packages into teehr_results.tgz
                 inherit.update({
                     "dataset_bucket": params.get("output_bucket", ""),
-                    "dataset_key": f"{params.get('output_prefix','').rstrip('/')}/teehr_results.tgz",
+                    "dataset_key": f"{params.get('output_prefix','').rstrip('/')}/teehr_results",
                 })
                 return inherit
             return inherit
