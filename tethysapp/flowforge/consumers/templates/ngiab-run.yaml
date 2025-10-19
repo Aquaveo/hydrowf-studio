@@ -9,7 +9,7 @@ spec:
   - name: main
     inputs:
       parameters:
-        - { name: output_bucket, default: "test-ngen" }
+        - { name: output_bucket, default: "ngiab" }
         - { name: output_prefix, default: "demo/default" }
         - { name: final_prefix,  default: "" }
         - { name: output_name,   default: "ngiab" }
@@ -48,9 +48,7 @@ spec:
 
         mkdir -p /tmp/in /tmp/data /workspace/data /tmp/out
         # Make these early so artifact archiving and parameter saves always work
-        mkdir -p /workspace/data/outputs /workspace/data/restarts
         printf "%s\n" "{{inputs.parameters.output_bucket}}" > /tmp/out/.bucket
-        printf "%s\n" "{{inputs.parameters.output_prefix}}/restarts.tgz" > /tmp/out/.restarts_key
 
         IN_URL="{{inputs.parameters.input_s3_url}}"
         SRC_DIR="/tmp/in"
@@ -81,15 +79,13 @@ spec:
         if [ -n "${IN_URL}" ]; then
           if echo "${IN_URL}" | grep -q '^s3://'; then
             ensure_aws
-            echo "aws s3 cp ${IN_URL} /tmp/data/input.tgz"
-            aws s3 cp "${IN_URL}" /tmp/data/input.tgz --no-progress
+            echo "aws s3 sync ${IN_URL} /tmp/data/input --no-progress"
+            aws s3 sync "${IN_URL}" /tmp/data/input --no-progress
           else
             command -v curl >/dev/null 2>&1 || pkg_install curl ca-certificates
-            echo "curl -fL ${IN_URL} -o /tmp/data/input.tgz"
-            curl -fL "${IN_URL}" -o /tmp/data/input.tgz
+            echo "curl -fL ${IN_URL} -o /tmp/data/input"
+            curl -fL "${IN_URL}" -o /tmp/data/input
           fi
-          [ -s /tmp/data/input.tgz ] || { echo "Missing /tmp/data/input.tgz"; exit 2; }
-          tar -C /tmp/data -xzf /tmp/data/input.tgz 2>/dev/null || tar -C /tmp/data -xf /tmp/data/input.tgz
           SRC_DIR="/tmp/data"
         fi
 
@@ -107,29 +103,14 @@ spec:
         # Strip any accidental leading slashes from key
         ik="${ik#/}"
 
-        # If /tmp/in is still our source and it's empty, pull with aws s3 cp
-        if [ "${SRC_DIR}" = "/tmp/in" ]; then
-          if [ -f "${SRC_DIR}" ]; then
-            tar -C /tmp/data -xzf "${SRC_DIR}" 2>/dev/null || tar -C /tmp/data -xf "${SRC_DIR}"
-            SRC_DIR="/tmp/data"
-          elif [ -d "${SRC_DIR}" ]; then
-            tgz="$(find "${SRC_DIR}" -maxdepth 1 -type f \( -name '*.tgz' -o -name '*.tar.gz' -o -name '*.tar' \) | head -n1 || true)"
-            if [ -n "${tgz}" ]; then
-              tar -C /tmp/data -xzf "${tgz}" 2>/dev/null || tar -C /tmp/data -xf "${tgz}"
-              SRC_DIR="/tmp/data"
-            fi
-          fi
-
-          if [ "${SRC_DIR}" = "/tmp/in" ] && [ -n "$ib" ] && [ -n "$ik" ]; then
-            ensure_aws
-            echo "aws s3 cp s3://${ib}/${ik} /tmp/data/input.tgz"
-            aws s3 cp "s3://${ib}/${ik}" /tmp/data/input.tgz --no-progress
-            [ -s /tmp/data/input.tgz ] || { echo "No such S3 object: s3://${ib}/${ik}"; exit 254; }
-            tar -C /tmp/data -xzf /tmp/data/input.tgz 2>/dev/null || tar -C /tmp/data -xf /tmp/data/input.tgz
-            SRC_DIR="/tmp/data"
-          fi
+        # If /tmp/in is still our source and it's empty, pull with aws  s3 sync
+        if [ "${SRC_DIR}" = "/tmp/in" ] && [ -n "$ib" ] && [ -n "$ik" ]; then
+          ensure_aws
+          echo "aws s3 sync s3://${ib}/${ik} /tmp/data/input --no-progress"
+          aws s3 sync "s3://${ib}/${ik}" /tmp/data/input --no-progress
+          SRC_DIR="/tmp/data"
         fi
-
+        
         # ---------------- Find dataset root (contains config/) ----------------
         IN_SUB="{{inputs.parameters.input_subdir}}"
         DATA_DIR=""
@@ -149,7 +130,7 @@ spec:
 
         # ---------------- Stage and run ----------------
         cp -a "${DATA_DIR}/." "/workspace/data/"
-        set +e
+        set e
         /ngen/HelloNGEN.sh /workspace/data auto "{{inputs.parameters.ngen_np}}" local
         rc=$?
         set -e
@@ -157,39 +138,40 @@ spec:
 
         # --- Package full dataset as a single tar with a top-level "<output_name>/" dir
         OUT_NAME="{{inputs.parameters.output_name}}"
-        OUT_TGZ="/tmp/${OUT_NAME}.tgz"
 
-        mkdir -p "/tmp/pkg/${OUT_NAME}"
-        cp -a /workspace/data/. "/tmp/pkg/${OUT_NAME}/"
-        tar -C /tmp/pkg -czf "${OUT_TGZ}" "${OUT_NAME}"
+        mkdir -p "/tmp/ngen_run/${OUT_NAME}"
+        cp -a /workspace/data/. "/tmp/ngen_run/${OUT_NAME}/"
 
         # record the dataset key for downstream steps
-        printf "%s\n" "{{inputs.parameters.output_prefix}}/{{inputs.parameters.output_name}}.tgz" > /tmp/out/.dataset_key
+        printf "%s\n" "{{inputs.parameters.output_prefix}}/{{inputs.parameters.output_name}}" > /tmp/out/.dataset_key
 
     outputs:
       parameters:
-        - name: restarts_s3_key
-          valueFrom: { path: /tmp/out/.restarts_key }
         - name: dataset_s3_key
           valueFrom: { path: /tmp/out/.dataset_key }
-      artifacts:                # <-- this block must be nested under outputs
-        - name: restarts-dir
-          path: /workspace/data/restarts
+      artifacts:
+        - name: ngen
+          path: "/workspace/data/outputs/ngen"
+          archive:
+            none: {}
           s3:
             endpoint: s3.amazonaws.com
             region: us-east-1
             bucket: "{{inputs.parameters.output_bucket}}"
-            key: "{{inputs.parameters.output_prefix}}/restarts.tgz"
-            accessKeySecret: { name: aws-creds, key: AWS_ACCESS_KEY_ID }
-            secretKeySecret:  { name: aws-creds, key: AWS_SECRET_ACCESS_KEY }
-        - name: dataset-full
-          path: "/tmp/{{inputs.parameters.output_name}}.tgz"
-          archive: { none: {} }
-          s3:
-            endpoint: s3.amazonaws.com
-            region: us-east-1
-            bucket: "{{inputs.parameters.output_bucket}}"
-            key: "{{inputs.parameters.output_prefix}}/{{inputs.parameters.output_name}}.tgz"
+            # fills: s3://<bucket>/<user>/<wf-id>/<output_name>/outputs/ngen
+            key: "{{inputs.parameters.output_prefix}}/{{inputs.parameters.output_name}}/outputs/ngen"
             accessKeySecret: { name: aws-creds, key: AWS_ACCESS_KEY_ID }
             secretKeySecret:  { name: aws-creds, key: AWS_SECRET_ACCESS_KEY }
 
+        - name: troute
+          path: "/workspace/data/outputs/troute"
+          archive:
+            none: {}
+          s3:
+            endpoint: s3.amazonaws.com
+            region: us-east-1
+            bucket: "{{inputs.parameters.output_bucket}}"
+            # fills: s3://<bucket>/<user>/<wf-id>/<output_name>/outputs/troute
+            key: "{{inputs.parameters.output_prefix}}/{{inputs.parameters.output_name}}/outputs/troute"
+            accessKeySecret: { name: aws-creds, key: AWS_ACCESS_KEY_ID }
+            secretKeySecret:  { name: aws-creds, key: AWS_SECRET_ACCESS_KEY }

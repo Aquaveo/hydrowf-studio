@@ -165,8 +165,10 @@ spec:
           [ -n "${NEWEST:-}" ] && cp -a "${NEWEST}/." "${TARGET}/" || true
         fi
 
-        mkdir -p "$TARGET/config" "$TARGET/forcings" "$TARGET/metadata" "$TARGET/outputs"
-
+        for d in ngen troute; do
+          mkdir -p "${TARGET}/${d}"
+          : > "${TARGET}/outputs/${d}/.keep"
+        done
         echo "Final staged directory: ${TARGET}"
         ls -lah "$TARGET" || true
     outputs:
@@ -179,7 +181,7 @@ spec:
   - name: build-tiles
     inputs:
       parameters:
-        - { name: output_bucket, default: "test-ngen" }
+        - { name: output_bucket, default: "test-bucket" }
         - { name: output_prefix, default: "demo/default" }
         - { name: output_name,   default: "ngiab" }
       artifacts:
@@ -311,7 +313,7 @@ spec:
   - name: convert-tiles
     inputs:
       parameters:
-        - { name: output_bucket, default: "test-ngen" }
+        - { name: output_bucket, default: "test-bucket" }
         - { name: output_prefix, default: "demo/default" }
         - { name: output_name,   default: "ngiab" }
       artifacts:

@@ -9,10 +9,10 @@ spec:
   - name: main
     inputs:
       parameters:
-        - { name: output_bucket,         default: "test-ngen" }
+        - { name: output_bucket,         default: "test-bucket" }
         - { name: output_prefix,         default: "demo/default" }
         - { name: final_prefix,          default: "" }
-        - { name: input_bucket,          default: "test-ngen" }
+        - { name: input_bucket,          default: "test-bucket" }
         - { name: input_s3_key,          default: "" }     # chained S3 object key (file)
         - { name: input_s3_url,          default: "" }     # standalone s3://... or https://...
         - { name: inputs_subdir,         default: "outputs" }

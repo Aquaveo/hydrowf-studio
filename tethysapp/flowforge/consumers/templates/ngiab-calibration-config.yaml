@@ -20,7 +20,7 @@ spec:
         - { name: calibration_ratio, default: "0.5" }
         - { name: force,             default: "false" }
         - { name: debug,             default: "false" }
-        - { name: output_bucket,     default: "test-ngen" }
+        - { name: output_bucket,     default: "test-bucket" }
         - { name: output_prefix,     default: "demo/default" }
     steps:
     - - name: prepare
@@ -64,7 +64,7 @@ spec:
         - { name: calibration_ratio, default: "0.5" }
         - { name: force,             default: "false" }
         - { name: debug,             default: "false" }
-        - { name: output_bucket,     default: "test-ngen" }
+        - { name: output_bucket,     default: "test-bucket" }
         - { name: output_prefix,     default: "demo/default" }
       artifacts:
         - name: preprocess
