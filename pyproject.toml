@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tethysapp-flowforge"
+name = "tethysapp-hydrowf_studio"
 description =  "Visual Pipeline Studio for NextGen in a Box"
 readme = "README.md"
 license = {text = "MIT"}
@@ -12,16 +12,8 @@ authors = [
     {name = "Elkin Romero", email = "gromero@aquaveo.com"},
 ]
 dependencies = [
-    "hera",
-    "duckdb",
-    "geopandas",
-    "xarray",
-    "netcdf4>=1.7.2",
-    "numpy<2",
-    "botocore",
-    "boto3",
-    "pyiceberg",
-    "pyarrow",
+    "requests",
+    "social-auth-app-django",
 ]
 
 classifiers = [
@@ -57,3 +49,6 @@ include = ["tethysapp*"]
     "*.json",
     "*.svg",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,59 @@
+{% load static tethys %}
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="shortcut icon" href="{% if site_globals.favicon and 'http' in site_globals.favicon %}{{ site_globals.favicon }}{% elif site_globals.favicon %}{% static site_globals.favicon %}{% else %}{% static 'tethys_portal/images/default_favicon.png' %}{% endif %}" />
+		<title>{{ tethys_app.name }}</title>
+		<link rel="stylesheet" href="{% static tethys_app|public:'css/studio.css' %}" />
+	</head>
+	<body>
+		<noscript>The studio needs JavaScript.</noscript>
+		<div id="root" data-api="{% url 'hydrowf_studio:home' %}api/" data-poll-seconds="{{ poll_seconds }}">
+			<header class="bar">
+				<a class="brand" href="{% url 'app_library' %}">hydrowf studio</a>
+				<span id="draft-name" class="draft-name"></span>
+				<select id="drafts" aria-label="Drafts in this browser"></select>
+				<button id="new">New</button>
+				<select id="templates" aria-label="Start from a published pipeline"></select>
+				<label class="button">Import<input id="import" type="file" accept="application/json" hidden></label>
+				<button id="export">Export</button>
+				<button id="delete-draft">Delete draft</button>
+				<span class="spacer"></span>
+				<button id="arrange">Arrange</button>
+				<button id="publish" class="primary">Publish</button>
+				<button id="run" class="primary">Run…</button>
+			</header>
+			<div id="login" class="login" hidden>Your login has expired. <a id="login-link" href="#">Log in again</a>; your drafts stay in this browser.</div>
+			<main class="studio">
+				<aside class="palette">
+					<h3>Tools</h3>
+					<input id="tool-filter" type="search" placeholder="Filter tools" aria-label="Filter tools">
+					<div id="tools" class="tool-list"></div>
+				</aside>
+				<section class="canvas-box">
+					<svg id="canvas" class="canvas" role="application" aria-label="Pipeline editor"></svg>
+					<div id="messages" class="messages" role="status"></div>
+				</section>
+				<aside class="side">
+					<div id="panel" class="panel"></div>
+					<div class="jobs-box">
+						<h3>Jobs <button id="refresh-jobs" class="small">Refresh</button></h3>
+						<div id="jobs" class="job-list"></div>
+						<div id="job" class="job-view"></div>
+					</div>
+				</aside>
+			</main>
+			<dialog id="run-dialog">
+				<form id="run-form" method="dialog">
+					<h3 id="run-title">Run</h3>
+					<div id="run-fields"></div>
+					<p id="run-error" class="field-problem" role="alert"></p>
+					<menu><button type="button" id="run-cancel">Cancel</button><button type="submit" id="run-start" class="primary">Start</button></menu>
+				</form>
+			</dialog>
+		</div>
+		<script src="{% static tethys_app|public:'frontend/studio.js' %}"></script>
+	</body>
+</html>

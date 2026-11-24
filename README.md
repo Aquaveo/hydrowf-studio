@@ -1,63 +1,91 @@
-# FlowForge
+# hydrowf-studio
 
-This app was created using an experimental Tethys + React app scaffold. It uses React for the frontend of the app and Tethys as the backend.
-
-## Development Installation
-
-You need to install both the Tethys dependencies and the node dependencies:
-
-1. Install the app in Tethys Platform
+A Tethys app for building pipelines from registered tools and running them on hydrowf. The studio is
+only a client. It keeps no state and runs nothing. Pipelines run where the backend runs them: Argo now,
+an HPC adapter later.
 
 ```
-conda activate tethys
-cd tethysapp-flowforge
+browser ── studio page (plain JS) ──► studio api/ (Tethys, as the logged-in user)
+                                         ├─► hydrowf-registry   tools, data, publish a pipeline
+                                         └─► hydrowf-ogc /ogc   describe, run, jobs, steps, results
+                                                └─► Argo (or HPC): runs every step of the pipeline
+```
+
+- **Steps and links.** A pipeline is a hydrowf-core `Pipeline`. Each node is a step: one tool lego at a
+  pinned version. A link passes a step's file or directory output to a later step's input.
+- **Step inputs.** Each step input is set to one of:
+  - a constant;
+  - an input asked when the pipeline runs;
+  - a registered data lego;
+  - a link.
+- **Publish and run.** Publish stores the pipeline in hydrowf-registry as the user's own (owner
+  visibility). /ogc then offers it to that user alone, as `<id>@<version>`, within a minute. Run starts
+  it as one job.
+- **Drafts.** Drafts live in the browser (localStorage). Export and Import move them between browsers as
+  JSON. Import also opens a published pipeline's JSON.
+
+## Settings
+
+| Setting | Default | What it is |
+|---|---|---|
+| `ogc_url` | `http://localhost:8000/ogc` | hydrowf-ogc's `/ogc` |
+| `registry_url` | `http://localhost:8002` | hydrowf-registry (8001 is /ogc's step-key vendor port) |
+| `poll_seconds` | `10` | How often the page reads a running job's steps |
+
+Every call to the two services carries the user's Keycloak access token. Over an `http://` URL that token
+crosses the network unencrypted. Use `https://`, or keep the services on a private cluster network.
+
+## Login: Keycloak through social-auth
+
+The user's token comes from the portal's social login (`social_django`), so the portal needs the Keycloak
+backend. In `portal_config.yml`:
+
+```yaml
+settings:
+  AUTHENTICATION_BACKENDS: [social_core.backends.keycloak.KeycloakOAuth2]
+  OAUTH_CONFIG:
+    SOCIAL_AUTH_KEYCLOAK_KEY: hydrowf-studio                      # the confidential client's id
+    SOCIAL_AUTH_KEYCLOAK_SECRET: <the client's secret>
+    SOCIAL_AUTH_KEYCLOAK_PUBLIC_KEY: <the realm's public key>
+    SOCIAL_AUTH_KEYCLOAK_AUTHORIZATION_URL: https://<keycloak>/realms/hydrowf/protocol/openid-connect/auth
+    SOCIAL_AUTH_KEYCLOAK_ACCESS_TOKEN_URL: https://<keycloak>/realms/hydrowf/protocol/openid-connect/token
+    SOCIAL_AUTH_KEYCLOAK_ID_KEY: sub                               # the default ("username") isn't in the token
+    SOCIAL_AUTH_KEYCLOAK_EXTRA_DATA: [[refresh_token, refresh_token], [expires_in, expires]]   # to refresh
+```
+
+In Keycloak, give the `hydrowf-studio` client audience mappers for `hydrowf-studio` (social-auth checks
+`aud` against its client id) and `hydrowf-api` (/ogc and the registry check `aud` against it).
+
+- **Refresh-token rotation.** Keep the realm's "Revoke Refresh Token" off. Two studio requests near a
+  token's expiry can both refresh with the same refresh token. With rotation on, the second refresh
+  would log the user out.
+- **Error reports.** The token-holding locals are marked as sensitive, so Django's error reports leave
+  them out. The HTTP library's own frames still hold the header, so don't run a portal with
+  `DEBUG=True` where real tokens are used.
+
+## Develop
+
+Install the app into a Tethys portal, then build the page. The bundle goes to
+`tethysapp/hydrowf_studio/public/frontend/`, which git ignores, so build before `tethys install` or packaging.
+
+```
 tethys install -d
-```
-
-2. Install the node and dependencies
-
-```
-cd tethysapp-flowforge
-npm install --dev
-```
-
-## Development
-
-The webpack dev server is configured to proxy the Tethys development server (see `webpack.config.js`). The app endpoint will be handled by the webpack development server and all other endpoints will be handled by the Tethys (Django) development server. As such, you will need to start both in separate terminals.
-
-1. Start Tethys development server
-
-```
+npm install
+npm run build          # or: npm run watch
 tethys manage start
-```
-
-2. Start webpack development server (in separate terminal)
-
-```
-npm start
-```
-
-## Build
-
-Webpack is configured to bundle and build the React app into the `tethysapp/<app_package>/public/frontend` directory. Before building a Python distribution for release, you should build using this command:
-
-```
-npm run build
 ```
 
 ## Test
 
-Use the following commands to lint and test the React portion of the app.
-
 ```
-npm run lint
-npm run test
+uv run --python 3.12 --no-project --with pytest --with requests --with social-auth-core python -m pytest -q
+npm test               # node --test frontend/test/*.test.js
+flake8 --max-line-length 120 tethysapp/hydrowf_studio tests
 ```
 
-The linting capability is powered by [eslint](https://eslint.org/) and a number of plugins for React. The testing capabilities include [jest](https://jestjs.io/), [jsdom](https://github.com/jsdom/jsdom#readme), [testing-framework](https://testing-library.com/), [user-event](https://testing-library.com/docs/user-event/intro/), and a few other JavaScript testing utilties to make it easy to test the frontend of the React-Tethys app.
+The Python tests run without a portal:
+- `service.py`, `ogc.py` and `registry.py` against fake services over real HTTP;
+- `api.py` and `tokens.refreshed` on their own.
 
-## Acknowledgements
-
-This implementation is based on the excellent work done by @Jitensid that can be found on GitHub here: [Jitensid/django-webpack-dev-server](https://github.com/Jitensid/django-webpack-dev-server).
-
-Some resources and source code is also derived from projects generated using [Create React App](https://create-react-app.dev/).
+`controllers.py` and `tokens.token_for` are the Tethys glue around them. The JavaScript tests cover the
+pipeline model, the step form's logic and the API client.

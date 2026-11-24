@@ -1,0 +1,71 @@
+:root {
+  --bg: #f7f8fa; --panel: #ffffff; --ink: #1d2230; --muted: #5d6475; --line: #d5d9e2;
+  --accent: #1f6feb; --danger: #c0392b; --ok: #1a7f37; --run: #b7791f; --skip: #8a8f9c;
+  --node: #ffffff; --node-head: #e9eef8; --edge: #6b7385;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14161b; --panel: #1c1f26; --ink: #e6e8ee; --muted: #9aa1b2; --line: #333846;
+          --accent: #4c8dff; --danger: #ff6b5e; --ok: #3fb950; --run: #d29922; --skip: #6e7681;
+          --node: #232733; --node-head: #2c3242; --edge: #8b93a7; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+#root { display: flex; flex-direction: column; height: 100vh; }
+button, .button, select, input, textarea { font: inherit; color: inherit; }
+button, .button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { color: var(--danger); border-color: var(--danger); margin-top: 12px; }
+button.small { padding: 0 6px; font-size: 12px; }
+select, input, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+.brand { font-weight: 700; color: var(--ink); text-decoration: none; }
+.bar select { max-width: 220px; text-overflow: ellipsis; }
+.draft-name { color: var(--muted); }
+.spacer { flex: 1; }
+.login { background: #fff4ce; color: #4d3b00; padding: 6px 12px; }
+.studio { flex: 1; display: grid; grid-template-columns: 220px 1fr 340px; min-height: 0; }
+.palette, .side { background: var(--panel); overflow: auto; padding: 8px 12px; }
+.palette { border-right: 1px solid var(--line); }
+.side { border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.tool-list, .job-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.tool, .job { text-align: left; display: flex; flex-direction: column; }
+.tool small, .job small { color: var(--muted); }
+.canvas-box { position: relative; min-width: 0; }
+.canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.messages { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 6px 10px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); }
+.messages:empty { display: none; }
+.messages.error { border-color: var(--danger); color: var(--danger); }
+.field { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
+.field-title { font-weight: 600; }
+.field-problem { color: var(--danger); }
+.muted { color: var(--muted); } .small { font-size: 12px; }
+.keep { font-size: 12px; color: var(--muted); }
+.problems { padding-left: 18px; color: var(--muted); }
+h3 { margin: 4px 0 8px; font-size: 15px; } h4 { margin: 12px 0 4px; font-size: 13px; }
+.results code { font-size: 11px; word-break: break-all; }
+.steps { padding-left: 18px; }
+.status-successful { color: var(--ok); } .status-running, .status-accepted { color: var(--run); }
+.status-failed, .status-dismissed { color: var(--danger); } .status-skipped, .status-pending { color: var(--skip); }
+dialog { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); min-width: 360px; }
+dialog menu { display: flex; gap: 8px; justify-content: flex-end; padding: 0; }
+/* the canvas */
+.node-box { fill: var(--node); stroke: var(--line); stroke-width: 1.5; }
+.node-head { fill: var(--node-head); }
+.node.selected .node-box { stroke: var(--accent); stroke-width: 2.5; }
+.node:focus { outline: none; }
+.node:focus-visible .node-box { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 6 3; }
+.node.unknown .node-box { stroke: var(--danger); stroke-dasharray: 4 3; }
+.node.status-successful .node-box { stroke: var(--ok); stroke-width: 2.5; }
+.node.status-running .node-box, .node.status-pending .node-box { stroke: var(--run); stroke-width: 2.5; }
+.node.status-failed .node-box { stroke: var(--danger); stroke-width: 2.5; }
+.node.status-skipped .node-box { stroke: var(--skip); stroke-dasharray: 4 3; }
+.node-title { font-weight: 600; fill: var(--ink); font-size: 13px; }
+.node-status { fill: var(--muted); font-size: 11px; }
+.port { fill: var(--panel); stroke: var(--edge); stroke-width: 1.5; cursor: crosshair; }
+.port.accepts { fill: var(--ok); } .port.refuses { opacity: 0.35; }
+.port-label { fill: var(--muted); font-size: 11px; pointer-events: none; }
+.edge { fill: none; stroke: var(--edge); stroke-width: 2; pointer-events: none; }
+.edge.selected { stroke: var(--accent); stroke-width: 3; }
+.edge.wiring { stroke-dasharray: 5 4; }
+.edge-hit { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
+@media (max-width: 900px) { .studio { grid-template-columns: 1fr; grid-auto-rows: minmax(300px, auto); } }
