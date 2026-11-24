@@ -12,6 +12,5 @@ dist/*
 build/*
 services.yml
 node_modules*
-tethysapp/flowforge/public/frontend/
-tethysapp/flowforge/workspaces/
-reactapp/config/production.env
+tethysapp/hydrowf_studio/public/frontend/
+tethysapp/hydrowf_studio/workspaces/
